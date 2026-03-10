@@ -1,6 +1,6 @@
 fastapi
-uvicorn[standard]
+uvicorn
 firebase-admin
-google-generativeai==0.7.2
-pydantic
-python-multipart
+python-dotenv
+pydantic-settings
+google-generativeai
