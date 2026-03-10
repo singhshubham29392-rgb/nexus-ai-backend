@@ -1,23 +1,18 @@
 import google.generativeai as genai
-from app.core.config import settings
-from app.core.constants import AIConfig
+import os
 
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 class TaskAgent:
 
     def __init__(self):
-        # Initialize Gemini
-        genai.configure(api_key=settings.GEMINI_API_KEY)
 
         self.model = genai.GenerativeModel(
-            settings.GEMINI_MODEL_NAME
+            "gemini-1.5-flash"
         )
 
-    async def analyze_requirement(self, user_input: str) -> str:
-        """
-        Processes user input and returns either a conversational reply
-        or a structured project roadmap.
-        """
+    async def analyze_requirement(self, user_input: str):
 
         try:
 
@@ -28,31 +23,21 @@ User message:
 {user_input}
 
 Rules:
-- If the user greets or chats → respond conversationally.
-- If the user asks about a project/task → provide a structured plan.
+- If the user greets → reply conversationally
+- If user asks about project → give structured plan
 
 For project requests include:
 1. Title
-2. 3-step technical roadmap
-3. Priority level
+2. Technical roadmap
+3. Challenges
 """
 
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=AIConfig.MAX_OUTPUT_TOKENS,
-                    temperature=AIConfig.TEMPERATURE,
-                )
-            )
+            response = self.model.generate_content(prompt)
 
-            # Safe response handling
-            if response and response.text:
-                return response.text
-            else:
-                return "Nexus AI couldn't generate a response."
+            return response.text
 
         except Exception as e:
-            return f"Nexus Agent Error: {str(e)}"
+            return f"AI Error: {str(e)}"
 
 
 # Singleton instance
