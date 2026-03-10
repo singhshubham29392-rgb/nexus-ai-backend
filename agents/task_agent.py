@@ -1,39 +1,27 @@
 import google.generativeai as genai
 import os
 
-# Configure Gemini
-
-
+# Configure Gemini API
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-model = genai.GenerativeModel("gemini-1.5-flash")
 
 class TaskAgent:
 
     def __init__(self):
-
-        self.model = genai.GenerativeModel(
-            "gemini-1.5-flash"
-        )
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
 
     async def analyze_requirement(self, user_input: str):
 
         try:
 
             prompt = f"""
-You are Nexus AI, a helpful AI assistant.
+You are Nexus AI assistant.
 
 User message:
 {user_input}
 
 Rules:
-- If the user greets → reply conversationally
-- If user asks about project → give structured plan
-
-For project requests include:
-1. Title
-2. Technical roadmap
-3. Challenges
+- If greeting → reply normally
+- If project request → give structured plan
 """
 
             response = self.model.generate_content(prompt)
@@ -44,5 +32,4 @@ For project requests include:
             return f"AI Error: {str(e)}"
 
 
-# Singleton instance
 nexus_agent = TaskAgent()
