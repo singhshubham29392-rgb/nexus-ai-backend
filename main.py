@@ -1,121 +1,92 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import os
 import firebase_admin
 from firebase_admin import credentials, firestore
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import google.generativeai as genai
-import datetime
 
-# 1. INITIALIZE FIREBASE
-try:
-    if not firebase_admin._apps:
-        cred = credentials.Certificate("serviceAccountKey.json")
-        firebase_admin.initialize_app(cred)
+from agents.task_agent import nexus_agent
 
-    db = firestore.client()
-    print("✅ Firebase Initialized Successfully")
+app = FastAPI(
+    title="Nexus AI Backend",
+    version="1.0.0"
+)
 
-except Exception as e:
-    print(f"❌ Firebase Initialization Failed: {e}")
-
-
-# 2. INITIALIZE GEMINI AI (NEW SDK)
-import os
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-
-app = FastAPI(title="Nexus AI Backend")
-
-# 3. CONFIGURE CORS
+# Allow Flutter / Web apps
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# -----------------------------
+# Firebase Initialization
+# -----------------------------
+db = None
 
-# Request Model
-class TaskRequest(BaseModel):
-    description: str
+try:
 
+    cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "serviceAccountKey.json")
+
+    if os.path.exists(cred_path):
+
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+
+        db = firestore.client()
+        print("Firebase initialized")
+
+    else:
+        print("Firebase credentials not found. Running without Firebase.")
+
+except Exception as e:
+    print(f"Firebase Initialization Failed: {e}")
+
+
+# -----------------------------
+# Routes
+# -----------------------------
 
 @app.get("/")
-def read_root():
+def root():
+    return {"message": "Nexus AI Backend Running"}
+
+
+@app.post("/agent/analyze-task")
+async def analyze_task(data: dict):
+
+    description = data.get("description")
+
+    if not description:
+        return {"error": "No description provided"}
+
+    ai_response = await nexus_agent.analyze_requirement(description)
+
+    # Save to Firestore if available
+    if db:
+        db.collection("tasks").add({
+            "description": description,
+            "response": ai_response
+        })
+
     return {
-        "status": "Nexus AI Server is Live",
-        "timestamp": datetime.datetime.now()
+        "response": ai_response
     }
 
 
-# 4. AI TASK ANALYZER
-@app.post("/agent/analyze-task")
-async def analyze_task(request: TaskRequest):
-    try:
-
-        prompt = (
-            f"As the Nexus AI Architect, analyze this task: '{request.description}'. "
-            "Provide a concise Title, a 3-step technical roadmap, and a priority level."
-        )
-
-        # Gemini AI call
-        response = client.models.generate_content(
-            model="models/gemini-flash-latest",
-            contents=prompt
-        )
-
-        ai_output = response.text
-
-        task_data = {
-            "title": request.description[:50],
-            "full_description": request.description,
-            "ai_analysis": ai_output,
-            "status": "analyzed",
-            "created_at": datetime.datetime.now(datetime.timezone.utc)
-        }
-
-        doc_ref = db.collection("tasks").add(task_data)
-
-        return {
-            "status": "success",
-            "analysis": ai_output
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# 5. GET TASK HISTORY
 @app.get("/agent/history")
-async def get_history():
-    try:
+def get_history():
 
-        tasks_ref = db.collection("tasks").order_by(
-            "created_at",
-            direction=firestore.Query.DESCENDING
-        )
+    if not db:
+        return {"tasks": []}
 
-        docs = tasks_ref.stream()
+    tasks = []
 
-        history = [
-            {**doc.to_dict(), "id": doc.id}
-            for doc in docs
-        ]
+    docs = db.collection("tasks").stream()
 
-        return {"tasks": history}
+    for doc in docs:
+        tasks.append(doc.to_dict())
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# 6. RUN SERVER
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000
-    )
+    return {"tasks": tasks}
