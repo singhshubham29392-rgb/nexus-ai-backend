@@ -1,0 +1,59 @@
+"""
+Docker Compose Configuration for Nexus AI Backend
+Usage: docker-compose up -d
+"""
+
+version: '3.8'
+
+services:
+  nexus-ai-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus-ai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=info
+    env_file:
+      - .env
+    volumes:
+      # Mount serviceAccountKey.json if different location
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    restart: unless-stopped
+    networks:
+      - nexus-network
+    labels:
+      - "com.nexus.description=Nexus AI Backend API"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nexus-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # SSL certificates (if using Let's Encrypt)
+      # - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - nexus-ai-backend
+    restart: unless-stopped
+    networks:
+      - nexus-network
+
+networks:
+  nexus-network:
+    driver: bridge
+
+# Volumes can be defined here if needed
+volumes: {}
